@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <boost/json.hpp>
 #include <boost/json/object.hpp>
+#include <functional>
 #include <iostream>
 #include <stdexcept>
 
@@ -21,12 +22,39 @@ void Commands::recieve()
     }
 }
 
-void Commands::track(std::string& target, TrackType type)
+void Commands::add_tracker(std::string& target, TrackType type,
+                           HandlerType handler)
 {
-    message_tracks[std::move(target)] = type;
+    message_tracks.emplace_back(std::move(target), type, handler);
 }
 
-void Commands::handle_line(std::string const& line)
+void Commands::print_handler(std::string const& data)
+{
+    std::cout << data << std::endl;
+}
+
+void Commands::log_handler(std::string const&) {
+}
+
+std::function<void(std::string const&)>
+Commands::get_handler(HandlerType handler) const
+{
+    switch (handler)
+    {
+    case HandlerType::print:
+    {
+        return Commands::print_handler;
+    }
+    break;
+    case HandlerType::log:
+    {
+        return Commands::log_handler;
+    }
+    break;
+    }
+}
+
+void Commands::parse_line(std::string const& line)
 {
     auto space_pos{ std::find(line.begin(), line.end(), ' ') };
     if (space_pos == line.end())
@@ -38,26 +66,30 @@ void Commands::handle_line(std::string const& line)
     json::object content{ json::parse(content_str).as_object() };
     if (line_type == "MSG")
     {
-        for (auto const& [track, track_type] : message_tracks)
+        for (auto const& [track, track_type, handler_type] : message_tracks)
         {
+            std::string response{};
+            bool matched{ false };
+            response += content["nick"].as_string();
+            response += ": ";
+            response += content["data"].as_string();
             switch (track_type)
             {
             case TrackType::name:
             {
                 if (content["nick"].as_string() == track)
                 {
-                    std::cout << content_str << " [track/name]\n";
+                    response += " [track/name]";
+                    matched = true;
                 }
             }
             break;
             case TrackType::match:
             {
-                if (content["data"].as_string() == track)
-                {
-                }
                 if (line.find(track) != line.npos)
                 {
-                    std::cout << content_str << " [track/match]\n";
+                    response += " [track/match]";
+                    matched = true;
                 }
             }
             break;
@@ -73,7 +105,8 @@ void Commands::handle_line(std::string const& line)
                         if (emote_entry.as_object()["name"].as_string() ==
                             track)
                         {
-                            std::cout << content_str << " [track/emote]\n";
+                            response += " [track/emote]";
+                            matched = true;
                         }
                     }
                 }
@@ -90,12 +123,17 @@ void Commands::handle_line(std::string const& line)
                     {
                         if (nick_entry.as_object()["nick"].as_string() == track)
                         {
-                            std::cout << content_str << " [track/mention]\n";
+                            response += " [track/mention]";
+                            matched = true;
                         }
                     }
                 }
             }
             break;
+            }
+            if (matched)
+            {
+                get_handler(handler_type)(response);
             }
         }
     }
