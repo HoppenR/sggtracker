@@ -20,6 +20,8 @@ public:
     void recieve() override;
 
 private:
+    void open();
+
     using _socket = boost::asio::ip::tcp::socket;
     using _ssl_stream = boost::beast::ssl_stream<_socket>;
     using _websocket_stream = boost::beast::websocket::stream<_ssl_stream>;
@@ -29,6 +31,8 @@ private:
     boost::asio::ip::tcp::resolver resolver;
 
     _websocket_stream wss;
+    std::string host;
+    std::string target;
 };
 
 #endif // WEBSOCKET_H

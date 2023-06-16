@@ -3,9 +3,11 @@
 
 #include "client.h"
 
+#include <functional>
 #include <iostream>
-#include <map>
 #include <sstream>
+#include <tuple>
+#include <vector>
 
 enum class TrackType
 {
@@ -15,6 +17,12 @@ enum class TrackType
     mention,
 };
 
+enum class HandlerType
+{
+    print,
+    log,
+};
+
 class Commands : public Client
 {
 public:
@@ -22,11 +30,15 @@ public:
     ~Commands() = default;
 
     void recieve() override;
-    void track(std::string&, TrackType);
-    void handle_line(std::string const&);
+    void add_tracker(std::string&, TrackType, HandlerType);
+    void parse_line(std::string const&);
+    std::function<void(std::string const&)> get_handler(HandlerType) const;
 
 private:
-    std::map<std::string, TrackType> message_tracks{};
+    std::vector<std::tuple<std::string, TrackType, HandlerType>>
+        message_tracks{};
+    static void print_handler(std::string const&);
+    static void log_handler(std::string const&);
 };
 
 #endif // COMMANDS_H

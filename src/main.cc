@@ -21,44 +21,62 @@ void event_loop()
         if (cmd.getline(line))
         {
             std::istringstream oss{ line };
-            oss >> line;
 
-            if (line == "q")
+            // "quit" or the type of handler for the match being created
+            oss >> line;
+            HandlerType handler;
+
+            if (line == "quit")
             {
                 break;
             }
-            else if (line == "track")
+
+            if (line == "print")
             {
-                oss >> line;
-                if (line == "name")
-                {
-                    oss >> line;
-                    std::cout << "tracking name: " << line << std::endl;
-                    cmd.track(line, TrackType::name);
-                }
-                else if (line == "match")
-                {
-                    oss >> line;
-                    std::cout << "tracking match: " << line << std::endl;
-                    cmd.track(line, TrackType::match);
-                }
-                else if (line == "emote")
-                {
-                    oss >> line;
-                    std::cout << "tracking emote: " << line << std::endl;
-                    cmd.track(line, TrackType::emote);
-                }
-                else if (line == "mention")
-                {
-                    oss >> line;
-                    std::cout << "tracking mention: " << line << std::endl;
-                    cmd.track(line, TrackType::mention);
-                }
+                handler = HandlerType::print;
             }
+            else if (line == "log")
+            {
+                handler = HandlerType::log;
+            }
+            else
+            {
+                continue;
+            }
+
+            // type of data to match against
+            oss >> line;
+            TrackType track_type;
+
+            if (line == "name")
+            {
+                track_type = TrackType::name;
+            }
+            else if (line == "match")
+            {
+                track_type = TrackType::match;
+            }
+            else if (line == "emote")
+            {
+                track_type = TrackType::emote;
+            }
+            else if (line == "mention")
+            {
+                track_type = TrackType::mention;
+            }
+            else
+            {
+                continue;
+            }
+
+            // query string
+            oss >> line;
+            cmd.add_tracker(line, track_type, handler);
         }
+
         if (wss.getline(line))
         {
-            cmd.handle_line(line);
+            cmd.parse_line(line);
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
