@@ -7,6 +7,7 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <tuple>
 
 void event_loop()
 {
@@ -21,25 +22,17 @@ void event_loop()
         if (cmd.getline(line))
         {
             std::istringstream oss{ line };
+            bool valid;
 
             // "quit" or the type of handler for the match being created
             oss >> line;
-            HandlerType handler;
-
             if (line == "quit")
             {
                 break;
             }
-
-            if (line == "print")
-            {
-                handler = HandlerType::print;
-            }
-            else if (line == "log")
-            {
-                handler = HandlerType::log;
-            }
-            else
+            HandlerType handler;
+            std::tie(handler, valid) = HandlerType::from_str(line);
+            if (!valid)
             {
                 continue;
             }
@@ -47,24 +40,8 @@ void event_loop()
             // type of data to match against
             oss >> line;
             TrackType track_type;
-
-            if (line == "name")
-            {
-                track_type = TrackType::name;
-            }
-            else if (line == "match")
-            {
-                track_type = TrackType::match;
-            }
-            else if (line == "emote")
-            {
-                track_type = TrackType::emote;
-            }
-            else if (line == "mention")
-            {
-                track_type = TrackType::mention;
-            }
-            else
+            std::tie(track_type, valid) = TrackType::from_str(line);
+            if (!valid)
             {
                 continue;
             }
