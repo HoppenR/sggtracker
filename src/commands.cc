@@ -1,26 +1,55 @@
 #include "commands.h"
+#include "util.h"
 #include <algorithm>
+#include <boost/asio.hpp>
 #include <boost/json.hpp>
 #include <boost/json/object.hpp>
 #include <functional>
 #include <iostream>
 #include <map>
 #include <stdexcept>
+#include <unistd.h>
 
 namespace json = boost::json;
+namespace asio = boost::asio;
+
+Commands::Commands(asio::io_context& ctx)
+    : Client{ ctx }, stdin_stream{ io_ctx, dup(STDIN_FILENO) }
+{
+}
+
+Commands::~Commands()
+{
+    stdin_stream.close();
+    std::cerr << "stdin_stream closed safetly" << std::endl;
+}
 
 void Commands::recieve()
 {
-    std::string command;
-    while (true)
-    {
-        std::getline(std::cin, command);
-        queue.push_back(command);
-        if (is_shutdown || command == "quit")
+    asio::async_read_until(
+        stdin_stream, buf, '\n',
+        [this](const boost::system::error_code error_code, std::size_t)
         {
-            return;
-        }
-    }
+            if (!error_code)
+            {
+                std::string command{ asio::buffer_cast<const char*>(
+                    buf.data()) };
+                buf.consume(buf.size());
+                queue.push_back(command);
+                buf.consume(buf.size());
+                if (io_ctx.stopped()) // || command == "quit")
+                {
+                    return;
+                }
+                io_ctx.post([this]() { this->recieve(); });
+            }
+            else
+            {
+                std::cerr << "Error reading stdin: " << error_code.message()
+                          << std::endl;
+                io_ctx.stop();
+            }
+        });
 }
 
 void Commands::add_tracker(std::string& target, TrackType type,
@@ -79,7 +108,7 @@ void Commands::parse_line(std::string const& line)
     std::string const line_type{ line.begin(), space_pos };
     std::string const content_str{ std::next(space_pos), line.end() };
     json::object content{ json::parse(content_str).as_object() };
-    std::map<HandlerType::Value, std::string> dispatch{};
+    std::map<HandlerType::Value, std::vector<std::string>> dispatch{};
     if (line_type == "MSG")
     {
         std::string response{};
@@ -94,7 +123,7 @@ void Commands::parse_line(std::string const& line)
             {
                 if (content["nick"].as_string() == track)
                 {
-                    dispatch[handler_type] += " [track/name]";
+                    dispatch[handler_type].push_back("name");
                 }
             }
             break;
@@ -102,7 +131,7 @@ void Commands::parse_line(std::string const& line)
             {
                 if (line.find(' ' + track + ' ') != line.npos)
                 {
-                    dispatch[handler_type] += " [track/match]";
+                    dispatch[handler_type].push_back("match");
                 }
             }
             break;
@@ -118,7 +147,7 @@ void Commands::parse_line(std::string const& line)
                         if (emote_entry.as_object()["name"].as_string() ==
                             track)
                         {
-                            dispatch[handler_type] += " [track/emote]";
+                            dispatch[handler_type].push_back("emote");
                         }
                     }
                 }
@@ -135,7 +164,7 @@ void Commands::parse_line(std::string const& line)
                     {
                         if (nick_entry.as_object()["nick"].as_string() == track)
                         {
-                            dispatch[handler_type] += " [track/mention]";
+                            dispatch[handler_type].push_back("mention");
                         }
                     }
                 }
@@ -145,7 +174,8 @@ void Commands::parse_line(std::string const& line)
         }
         for (auto const& [handler_type, tracks] : dispatch)
         {
-            get_handler(handler_type)(response + tracks);
+            auto handler = get_handler(handler_type);
+            handler(response + " [" + join_vector(tracks) + ']');
         }
     }
     else if (line_type == "MUTE")

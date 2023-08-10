@@ -19,6 +19,7 @@ DEPENDS := $(OBJDIR)/main.o
 DEPENDS += $(OBJDIR)/websocket.o
 DEPENDS += $(OBJDIR)/commands.o
 DEPENDS += $(OBJDIR)/client.o
+DEPENDS += $(OBJDIR)/util.o
 
 all: $(OBJDIR) a.out
 

@@ -1,6 +1,7 @@
 #include "commands.h"
 #include "websocket.h"
 
+#include "boost/asio/io_context.hpp"
 #include <chrono>
 #include <future>
 #include <iostream>
@@ -9,16 +10,22 @@
 #include <thread>
 #include <tuple>
 
+namespace asio = boost::asio;
+
 void event_loop()
 {
-    Commands cmd{};
-    WebSocket wss{ "chat.strims.gg", "443", "/ws" };
-    std::thread cmd_thrd{ [&cmd] { cmd.recieve(); } };
-    std::thread wss_thrd{ [&wss] { wss.recieve(); } };
+    asio::io_context io_ctx{};
+
+    Commands cmd{ io_ctx };
+    WebSocket wss{ "chat.strims.gg", "443", "/ws", io_ctx };
+
+    io_ctx.post([&cmd]() { cmd.recieve(); });
+    io_ctx.post([&wss]() { wss.recieve(); });
 
     std::string line;
-    while (true)
+    while (!(io_ctx.stopped()))
     {
+        io_ctx.run_one();
         if (cmd.getline(line))
         {
             std::istringstream oss{ line };
@@ -28,6 +35,7 @@ void event_loop()
             oss >> line;
             if (line == "quit")
             {
+                io_ctx.stop();
                 break;
             }
             HandlerType handler;
@@ -55,17 +63,18 @@ void event_loop()
         {
             cmd.parse_line(line);
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
-    std::cout << "wait WebSocket::wss::read() to exit" << std::endl;
-    cmd.set_shutdown();
-    wss.set_shutdown();
-    cmd_thrd.join();
-    wss_thrd.join();
 }
 
 int main()
 {
+    /*
+     * TODO: Maybe use namespaces or better naming for struct?
+     *                ::Client,
+     *       WebSocket::Client
+     *        Commands::Client
+     * TODO: Look into turning io_context posts into threads
+     * TODO: Maybe move other structs from commands.h into new folder/file
+     */
     event_loop();
-    std::cout << "exit safetly" << std::endl;
 }

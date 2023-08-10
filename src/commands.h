@@ -3,6 +3,9 @@
 
 #include "client.h"
 
+#include <boost/asio/io_context.hpp>
+#include <boost/asio/posix/stream_descriptor.hpp>
+#include <boost/asio/streambuf.hpp>
 #include <functional>
 #include <iostream>
 #include <map>
@@ -52,8 +55,8 @@ private:
 class Commands : public Client
 {
 public:
-    Commands() = default;
-    ~Commands() = default;
+    Commands(boost::asio::io_context&);
+    ~Commands();
 
     void recieve() override;
     void add_tracker(std::string&, TrackType, HandlerType);
@@ -67,6 +70,9 @@ private:
     static void count_handler(std::string const&);
     static void print_handler(std::string const&);
     static void log_handler(std::string const&);
+
+    boost::asio::posix::stream_descriptor stdin_stream;
+    boost::asio::streambuf buf;
 };
 
 #endif // COMMANDS_H
