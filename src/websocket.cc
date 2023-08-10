@@ -14,46 +14,80 @@
 #include <ostream>
 #include <string>
 
-namespace ip = boost::asio::ip;
-namespace ssl = boost::asio::ssl;
+namespace asio = boost::asio;
 namespace beast = boost::beast;
+namespace ip = boost::asio::ip;
 namespace net = boost::beast::net;
+namespace ssl = boost::asio::ssl;
+namespace websocket = boost::beast::websocket;
 
-WebSocket::WebSocket(char const* host, char const* port, char const* target)
-    : ctx{ ssl::context::tlsv12_client }, resolver{ io_ctx },
-      wss{ io_ctx, ctx }, host{ host }, target{ target }
+WebSocket::WebSocket(char const* host, char const* port, char const* target,
+                     asio::io_context& ctx)
+    : Client{ ctx }, ssl_ctx{ ssl::context::tlsv12_client }, resolver{ io_ctx },
+      buf{ asio::dynamic_buffer(line) }, wss{ io_ctx, ssl_ctx }, host{ host },
+      target{ target }
 {
     ip::basic_resolver_results<ip::tcp> dom_res{ resolver.resolve(host, port) };
+
+    wss.set_option(websocket::stream_base::timeout{
+        /* .handshake_timeout = */ websocket::stream_base::none(),
+        /* .idle_timeout = */ websocket::stream_base::none(),
+        /* .keep_alive_pings = */ true,
+    });
+
     net::connect(beast::get_lowest_layer(wss), dom_res);
     SSL_set_tlsext_host_name(wss.next_layer().native_handle(), host);
     this->open();
 }
 
+WebSocket::~WebSocket()
+{
+    wss.close(beast::websocket::close_code::normal);
+    std::cerr << "websocket closed safetly" << std::endl;
+}
+
 void WebSocket::open()
 {
+    std::cerr << "Attempting to connect..." << std::endl;
     wss.next_layer().handshake(ssl::stream_base::client);
     wss.handshake(host, target);
 }
 
 void WebSocket::recieve()
 {
-    std::string line{};
-    auto buf{ boost::asio::dynamic_buffer(line) };
-    while (true)
-    {
-        if (!wss.is_open())
+    wss.async_read(
+        buf,
+        [this](boost::system::error_code error_code, std::size_t)
         {
-            std::cout << "attempting to reconnect" << std::endl;
-            this->open();
-        }
-        wss.read(buf);
-        queue.push_back(std::move(line));
-        buf.consume(buf.size());
-        if (is_shutdown)
-        {
-            return;
-        }
-    }
-}
+            if (!error_code)
+            {
+                queue.push_back(line);
+                buf.consume(buf.size());
+                if (io_ctx.stopped())
+                {
+                    return;
+                }
 
-WebSocket::~WebSocket() { wss.close(beast::websocket::close_code::normal); }
+                io_ctx.post([this]() { this->recieve(); });
+            }
+            else if (error_code == boost::asio::error::connection_reset)
+            {
+                std::cerr << "Connection reset..." << std::endl;
+                this->open();
+                io_ctx.post([this]() { this->recieve(); });
+            }
+            // else if (error_code ==
+            // boost::beast::http::error::end_of_stream)
+            // {
+            //     std::cerr << "Websocket closed..." << std::endl;
+            //     this->open();
+            //     io_ctx.post([this]() { this->recieve(); });
+            // }
+            else
+            {
+                std::cerr << "Error reading websocket: " << error_code.message()
+                          << std::endl;
+                io_ctx.stop();
+            }
+        });
+}

@@ -14,7 +14,7 @@
 class WebSocket : public Client
 {
 public:
-    WebSocket(char const*, char const*, char const*);
+    WebSocket(char const*, char const*, char const*, boost::asio::io_context&);
     ~WebSocket();
 
     void recieve() override;
@@ -26,9 +26,12 @@ private:
     using _ssl_stream = boost::beast::ssl_stream<_socket>;
     using _websocket_stream = boost::beast::websocket::stream<_ssl_stream>;
 
-    boost::asio::io_context io_ctx;
-    boost::asio::ssl::context ctx;
+    boost::asio::ssl::context ssl_ctx;
     boost::asio::ip::tcp::resolver resolver;
+    std::string line;
+    boost::asio::dynamic_string_buffer<char, std::char_traits<char>,
+                                       std::allocator<char>>
+        buf;
 
     _websocket_stream wss;
     std::string host;
