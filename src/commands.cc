@@ -1,9 +1,9 @@
 #include "commands.h"
-#include "util.h"
 #include <algorithm>
 #include <boost/asio.hpp>
 #include <boost/json.hpp>
 #include <boost/json/object.hpp>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <map>
@@ -12,6 +12,8 @@
 
 namespace json = boost::json;
 namespace asio = boost::asio;
+
+std::ofstream Commands::log_file("log.txt", std::ios::out);
 
 Commands::Commands(asio::io_context& ctx)
     : Client{ ctx }, stdin_stream{ io_ctx, dup(STDIN_FILENO) }
@@ -58,20 +60,28 @@ void Commands::add_tracker(std::string& target, TrackType type,
     message_tracks.emplace_back(std::move(target), type, handler);
 }
 
-void Commands::print_handler(std::string const& data)
+void Commands::print_handler(json::object& content, std::vector<std::string>)
 {
-    std::cout << data << std::endl;
+    std::cout << content["nick"].as_string() << ": ";
+    std::cout << content["data"].as_string() << std::endl;
 }
 
-void Commands::count_handler(std::string const& data)
+void Commands::count_handler(json::object&, std::vector<std::string> tracks)
 {
-    counters[data]++;
-    std::cout << counters[data] << " counts of " << data << std::endl;
+    for (auto tr : tracks)
+    {
+        counters[tr]++;
+        std::cout << counters[tr] << " counts of " << tr << std::endl;
+    }
 }
 
-void Commands::log_handler(std::string const&) {}
+void Commands::log_handler(json::object& content, std::vector<std::string>)
+{
+    log_file << content["nick"].as_string() << ": ";
+    log_file << content["data"].as_string() << std::endl;
+}
 
-std::function<void(std::string const&)>
+std::function<void(json::object&, std::vector<std::string>)>
 Commands::get_handler(HandlerType handler) const
 {
     switch (handler)
@@ -111,10 +121,6 @@ void Commands::parse_line(std::string const& line)
     std::map<HandlerType::Value, std::vector<std::string>> dispatch{};
     if (line_type == "MSG")
     {
-        std::string response{};
-        response += content["nick"].as_string();
-        response += ": ";
-        response += content["data"].as_string();
         for (auto& [track, track_type, handler_type] : message_tracks)
         {
             switch (track_type)
@@ -123,15 +129,15 @@ void Commands::parse_line(std::string const& line)
             {
                 if (content["nick"].as_string() == track)
                 {
-                    dispatch[handler_type].push_back("name");
+                    dispatch[handler_type].push_back(track);
                 }
             }
             break;
             case TrackType::match:
             {
-                if (line.find(' ' + track + ' ') != line.npos)
+                if (line.find(track) != line.npos)
                 {
-                    dispatch[handler_type].push_back("match");
+                    dispatch[handler_type].push_back(track);
                 }
             }
             break;
@@ -147,7 +153,7 @@ void Commands::parse_line(std::string const& line)
                         if (emote_entry.as_object()["name"].as_string() ==
                             track)
                         {
-                            dispatch[handler_type].push_back("emote");
+                            dispatch[handler_type].push_back(track);
                         }
                     }
                 }
@@ -164,7 +170,7 @@ void Commands::parse_line(std::string const& line)
                     {
                         if (nick_entry.as_object()["nick"].as_string() == track)
                         {
-                            dispatch[handler_type].push_back("mention");
+                            dispatch[handler_type].push_back(track);
                         }
                     }
                 }
@@ -175,7 +181,7 @@ void Commands::parse_line(std::string const& line)
         for (auto const& [handler_type, tracks] : dispatch)
         {
             auto handler = get_handler(handler_type);
-            handler(response + " [" + join_vector(tracks) + ']');
+            handler(content, tracks);
         }
     }
     else if (line_type == "MUTE")

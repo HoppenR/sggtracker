@@ -8,11 +8,13 @@
 #include <boost/beast/ssl.hpp>
 #include <boost/beast/websocket.hpp>
 #include <boost/beast/websocket/ssl.hpp>
+#include <chrono>
 #include <cstdlib>
 #include <iostream>
 #include <openssl/tls1.h>
 #include <ostream>
 #include <string>
+#include <thread>
 
 namespace asio = boost::asio;
 namespace beast = boost::beast;
@@ -20,6 +22,8 @@ namespace ip = boost::asio::ip;
 namespace net = boost::beast::net;
 namespace ssl = boost::asio::ssl;
 namespace websocket = boost::beast::websocket;
+
+using namespace std::chrono_literals;
 
 WebSocket::WebSocket(char const* host, char const* port, char const* target,
                      asio::io_context& ctx)
@@ -31,7 +35,7 @@ WebSocket::WebSocket(char const* host, char const* port, char const* target,
 
     wss.set_option(websocket::stream_base::timeout{
         /* .handshake_timeout = */ websocket::stream_base::none(),
-        /* .idle_timeout = */ websocket::stream_base::none(),
+        /* .idle_timeout = */ std::chrono::seconds(15),
         /* .keep_alive_pings = */ true,
     });
 
@@ -48,9 +52,16 @@ WebSocket::~WebSocket()
 
 void WebSocket::open()
 {
-    std::cerr << "Attempting to connect..." << std::endl;
-    wss.next_layer().handshake(ssl::stream_base::client);
-    wss.handshake(host, target);
+    try
+    {
+        std::cerr << "Attempting to connect..." << std::endl;
+        wss.next_layer().handshake(ssl::stream_base::client);
+        wss.handshake(host, target);
+    }
+    catch (const boost::system::system_error& err)
+    {
+        std::cerr << "Error connecting:" << err.what() << std::endl;
+    }
 }
 
 void WebSocket::recieve()
@@ -73,8 +84,23 @@ void WebSocket::recieve()
             else if (error_code == boost::asio::error::connection_reset)
             {
                 std::cerr << "Connection reset..." << std::endl;
-                this->open();
-                io_ctx.post([this]() { this->recieve(); });
+                // this->open();
+                // io_ctx.post([this]() { this->recieve(); });
+                io_ctx.stop();
+            }
+            else if (error_code == websocket::error::closed)
+            {
+                std::cerr << "Websocket closed..." << std::endl;
+                // this->open();
+                // io_ctx.post([this]() { this->recieve(); });
+                io_ctx.stop();
+            }
+            else if (error_code == beast::error::timeout)
+            {
+                std::cerr << "Websocket connectio timed out..." << std::endl;
+                // this->open();
+                // io_ctx.post([this]() { this->recieve(); });
+                io_ctx.stop();
             }
             // else if (error_code ==
             // boost::beast::http::error::end_of_stream)

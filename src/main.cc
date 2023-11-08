@@ -69,6 +69,7 @@ void event_loop()
 int main()
 {
     /*
+     * TODO: Fix reconnecting
      * TODO: Maybe use namespaces or better naming for struct?
      *                ::Client,
      *       WebSocket::Client

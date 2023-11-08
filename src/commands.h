@@ -6,6 +6,8 @@
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/posix/stream_descriptor.hpp>
 #include <boost/asio/streambuf.hpp>
+#include <boost/json/object.hpp>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <map>
@@ -61,15 +63,18 @@ public:
     void recieve() override;
     void add_tracker(std::string&, TrackType, HandlerType);
     void parse_line(std::string const&);
-    std::function<void(std::string const&)> get_handler(HandlerType) const;
+    std::function<void(boost::json::object&, std::vector<std::string>)>
+        get_handler(HandlerType) const;
 
 private:
     std::vector<std::tuple<std::string, TrackType, HandlerType>>
         message_tracks{};
     static std::map<std::string, int> counters;
-    static void count_handler(std::string const&);
-    static void print_handler(std::string const&);
-    static void log_handler(std::string const&);
+    static void count_handler(boost::json::object&, std::vector<std::string>);
+    static void print_handler(boost::json::object&, std::vector<std::string>);
+    static void log_handler(boost::json::object&, std::vector<std::string>);
+
+    static std::ofstream log_file;
 
     boost::asio::posix::stream_descriptor stdin_stream;
     boost::asio::streambuf buf;
